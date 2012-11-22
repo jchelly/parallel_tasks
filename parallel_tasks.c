@@ -52,8 +52,8 @@ size_t identify_format(char *str, size_t len)
   
   /* Skip width */
   while((i < len-1) && 
-	((int) str[i] >= (int) '0') && 
-	((int) str[i] <= (int) '9'))
+	(str[i] >= '0') && 
+	(str[i] <= '9'))
     i += 1;
 
   /* Skip precision */
@@ -108,7 +108,10 @@ void *run_job(void *ptr)
   size_t offset = 0;
   size_t fpos;
 
-  /* Construct command by substituting in job index */
+  /* 
+     Construct command by substituting in job index
+     wherever we find an int or double format specifier
+  */
   while(offset < len)
     {
       fpos = identify_format(command+offset, len-offset);
@@ -155,6 +158,7 @@ void *run_job(void *ptr)
 	}
     }
   
+  /* Run the command */
   printf("Running job %d on process %d\n", ijob, ThisTask);
   system(cmd_exec);
   printf("Job %d on process %d finished\n", ijob, ThisTask);
