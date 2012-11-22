@@ -19,12 +19,147 @@ volatile int job_running;
 #define COMMAND_LENGTH 500
 static char command[500];
 
+
+/*
+  Check to see what format specifier a string contains,
+  if any. Returns index of the character at the end of the
+  format string or 0 if there isn't one.
+*/
+size_t identify_format(char *str, size_t len)
+{
+  size_t i = 0;
+
+  /* Advance to first '%' sign */
+  while((i < len-1) && (str[i] != '%'))
+    i += 1;
+  
+  /* Return 0 if we didn't find a % or we're at the end */
+  if((str[i] != '%') || (i >= len-1))
+    return 0;
+  
+  /* Advance to type character/flags etc */
+  i += 1;
+  if(i >= len)return 0;
+
+  /* Skip over any flags */
+  while((i < len-1) && 
+	((str[i]=='+') ||
+	 (str[i]=='-') ||
+	 (str[i]==' ') ||
+	 (str[i]=='#') ||
+	 (str[i]=='0')))
+    i += 1;
+  
+  /* Skip width */
+  while((i < len-1) && 
+	((int) str[i] >= (int) '0') && 
+	((int) str[i] <= (int) '9'))
+    i += 1;
+
+  /* Skip precision */
+  if(str[i] == '.')
+    {
+      /* Skip over dot */
+      i+= 1;
+      if(i>=len-1)
+	return 0;
+      
+      /* Skip any digits */
+      while((i < len-1) && 
+	    (str[i] >= '0') && 
+	    (str[i] <= '9'))
+	i += 1;
+    }
+
+  /* Skip modifier */
+  while((i < len-1) && 
+	((str[i]=='h') ||
+	 (str[i]=='l') ||
+	 (str[i]=='L')))
+    i += 1;
+
+  /* Should now have type character */
+  switch (str[i])
+    {
+    case 'd':
+    case 'i':
+    case 'f':
+    case 'e':
+    case 'E':
+    case 'g':
+    case 'G':
+      return i;
+    break;
+    default:
+      return 0;
+      break;
+    }
+}
+
+
+
+
 void *run_job(void *ptr)
 {
   char cmd_exec[COMMAND_LENGTH];
+  char tmp[COMMAND_LENGTH];
   int ijob = *((int *) ptr);
+  size_t exec_offset = 0;
+  size_t len = strlen(command);
+  size_t offset = 0;
+  size_t fpos;
+
+  /* Construct command by substituting in job index */
+  while(offset < len)
+    {
+      fpos = identify_format(command+offset, len-offset);
+      printf("fpos = %d\n", (int) fpos);
+      if(fpos == 0)
+	{
+	  /* No format strings left, so just copy */
+	  strncpy(cmd_exec+exec_offset, command+offset, 
+		 COMMAND_LENGTH-exec_offset);
+	  offset = len;
+	}
+      else
+	{
+	  /* Have to sub in the job number */
+	  strncpy(tmp, command+offset, fpos+1);
+	  tmp[fpos+1] = (char) 0;
+
+	  printf("tmp = %s\n", tmp);
+
+	  switch (command[offset+fpos])
+	    {
+	    case 'd':
+	    case 'i':
+	      {
+		sprintf(cmd_exec+exec_offset, tmp, ijob);
+		exec_offset = strlen(cmd_exec);
+		offset += fpos + 1;
+	      }
+	    break;
+	    case 'f':
+	    case 'e':
+	    case 'E':
+	    case 'g':
+	    case 'G':
+	      {
+		sprintf(cmd_exec+exec_offset, tmp, (double) ijob);
+		exec_offset = strlen(cmd_exec);
+		offset += fpos + 1;
+	      }
+	    break;
+	    default:
+	      /* Can't handle this format, so just copy */
+	      strncpy(cmd_exec+exec_offset, command+offset, 
+		     COMMAND_LENGTH-exec_offset);
+	      offset = len;
+	    }
+	}
+    }
+  
   printf("Running job %d on process %d\n", ijob, ThisTask);
-  sprintf(cmd_exec, command, ijob);
   system(cmd_exec);
   printf("Job %d on process %d finished\n", ijob, ThisTask);
   job_running = 0;
