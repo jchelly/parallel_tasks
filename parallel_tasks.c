@@ -98,7 +98,6 @@ size_t identify_format(char *str, size_t len)
 
 
 
-
 void *run_job(void *ptr)
 {
   char cmd_exec[COMMAND_LENGTH];
@@ -113,7 +112,6 @@ void *run_job(void *ptr)
   while(offset < len)
     {
       fpos = identify_format(command+offset, len-offset);
-      printf("fpos = %d\n", (int) fpos);
       if(fpos == 0)
 	{
 	  /* No format strings left, so just copy */
@@ -126,8 +124,6 @@ void *run_job(void *ptr)
 	  /* Have to sub in the job number */
 	  strncpy(tmp, command+offset, fpos+1);
 	  tmp[fpos+1] = (char) 0;
-
-	  printf("tmp = %s\n", tmp);
 
 	  switch (command[offset+fpos])
 	    {
@@ -165,6 +161,8 @@ void *run_job(void *ptr)
   job_running = 0;
   return NULL;
 }
+
+
 
 int main(int argc, char *argv[])
 {
