@@ -1,6 +1,5 @@
 CC      = mpicc
 CFLAGS  = -g
-LDFLAGS = -Wl,-rpath=/gal/jcha/jch/software/install/lib/
 
 .SUFFIXES:
 .SUFFIXES: .c .o

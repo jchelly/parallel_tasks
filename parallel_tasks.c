@@ -107,7 +107,7 @@ int main(int argc, char *argv[])
 		  job_running = 1;
 		  local_job = next_to_assign;
 		  pthread_create(&job_thread, NULL, 
-				 (void *) &run_job, 
+				 &run_job, 
 				 (void *) &local_job);
 		  next_to_assign += 1;
 		}
