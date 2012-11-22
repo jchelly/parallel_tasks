@@ -19,7 +19,7 @@ volatile int job_running;
 #define COMMAND_LENGTH 500
 static char command[500];
 
-void run_job(void *ptr)
+void *run_job(void *ptr)
 {
   char cmd_exec[COMMAND_LENGTH];
   int ijob = *((int *) ptr);
@@ -28,7 +28,7 @@ void run_job(void *ptr)
   system(cmd_exec);
   printf("Job %d on process %d finished\n", ijob, ThisTask);
   job_running = 0;
-  return;
+  return NULL;
 }
 
 int main(int argc, char *argv[])
