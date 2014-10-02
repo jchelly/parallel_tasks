@@ -16,8 +16,8 @@ static int ThisTask;
 volatile int job_running;
 
 /* Maximum length of command to execute */
-#define COMMAND_LENGTH 500
-static char command[500];
+#define COMMAND_LENGTH 4096
+static char command[COMMAND_LENGTH];
 
 
 /*
@@ -191,6 +191,7 @@ int main(int argc, char *argv[])
       sscanf(argv[1], "%d", &ifirst);
       sscanf(argv[2], "%d", &ilast);
       strncpy(command, argv[3], COMMAND_LENGTH);
+      command[COMMAND_LENGTH-1] = (char) 0;
 
       if((ifirst < 0) || (ilast < 0))
 	{
@@ -198,6 +199,9 @@ int main(int argc, char *argv[])
 	  MPI_Abort(MPI_COMM_WORLD, 1);  
 	}
     }
+
+  if(ThisTask==0)
+    printf("Parallel tasks - command is: %s\n", command);
 
   /* Broadcast arguments */
   MPI_Bcast(&ifirst, 1, MPI_INT, 0, MPI_COMM_WORLD);
