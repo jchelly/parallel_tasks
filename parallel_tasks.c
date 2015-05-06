@@ -19,6 +19,9 @@ volatile int job_running;
 #define COMMAND_LENGTH 4096
 static char command[COMMAND_LENGTH];
 
+/* MPI tags */
+#define JOB_REQUEST_TAG 1
+#define TERMINATION_TAG 2
 
 /*
   Check to see what format specifier a string contains,
@@ -266,7 +269,7 @@ int main(int argc, char *argv[])
 	  flag = 1;
 	  while(flag)
 	    {
-	      MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, 
+	      MPI_Iprobe(MPI_ANY_SOURCE, JOB_REQUEST_TAG, MPI_COMM_WORLD, 
 			 &flag, &probe_status);
 	      if(flag)
 		{
@@ -290,13 +293,21 @@ int main(int argc, char *argv[])
 		    }
 		  /* Send the job index back */
 		  MPI_Send(&ijob, 1, MPI_INT, probe_status.MPI_SOURCE, 
-			   0, MPI_COMM_WORLD);
+			   JOB_REQUEST_TAG, MPI_COMM_WORLD);
 		}
 	    }
 
 	  /* Go back to sleep */
 	  sleep(SLEEP_TIME);
 	}
+      /* 
+	 At this point, all jobs are complete so signal other tasks.
+	 This is just to avoid having them sit at 100% cpu in MPI_Barrier.
+      */
+      int i;
+      int dummy = 1;
+      for(i=1;i<NTask;i+=1)
+	MPI_Send(&dummy, 1, MPI_INT, i, TERMINATION_TAG, MPI_COMM_WORLD);
     }
   else
     {
@@ -310,8 +321,8 @@ int main(int argc, char *argv[])
 	  int ijob;
 	  MPI_Status status;
 	  /* Ask for a job */
-	  MPI_Sendrecv(&ireq, 1, MPI_INT, 0, 0,
-		       &ijob, 1, MPI_INT, 0, 0,
+	  MPI_Sendrecv(&ireq, 1, MPI_INT, 0, JOB_REQUEST_TAG,
+		       &ijob, 1, MPI_INT, 0, JOB_REQUEST_TAG,
 		       MPI_COMM_WORLD, &status);
 	  if(ijob >= 0)
 	    {
@@ -324,9 +335,34 @@ int main(int argc, char *argv[])
 	      break;
 	    }
 	}
+      /*
+	Now wait for termination signal from task 0
+      */
+      int flag = 0;
+      while(!flag)
+	{
+	  MPI_Status probe_status;
+	  MPI_Status recv_status;	  
+	  MPI_Iprobe(0, TERMINATION_TAG, MPI_COMM_WORLD, 
+		     &flag, &probe_status);
+	  if(flag)
+	    {
+	      /* Termination message is waiting */
+	      int dummy;
+	      MPI_Recv(&dummy, 1, MPI_INT, 
+		       probe_status.MPI_SOURCE, probe_status.MPI_TAG, 
+		       MPI_COMM_WORLD, &recv_status);
+	    }
+	  else
+	    {
+	      /* Wait a bit before trying again */
+	      sleep(SLEEP_TIME);
+	    }
+	}
     }
 
   MPI_Barrier(MPI_COMM_WORLD);
+
   if(ThisTask==0)
     printf("All jobs complete.\n");
 
