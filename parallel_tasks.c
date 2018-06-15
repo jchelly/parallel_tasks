@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <limits.h>
 #include <mpi.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -22,6 +23,12 @@ static char command[COMMAND_LENGTH];
 /* MPI tags */
 #define JOB_REQUEST_TAG 1
 #define TERMINATION_TAG 2
+
+/* Range of job indexes to do */
+static int ifirst, ilast;
+
+/* Table of job results */
+int *job_result;
 
 /*
   Check to see what format specifier a string contains,
@@ -110,6 +117,7 @@ void *run_job(void *ptr)
   size_t len = strlen(command);
   size_t offset = 0;
   size_t fpos;
+  int return_code;
 
   /* 
      Construct command by substituting in job index
@@ -163,7 +171,8 @@ void *run_job(void *ptr)
   
   /* Run the command */
   printf("Running job %d on process %d\n", ijob, ThisTask);
-  system(cmd_exec);
+  return_code = system(cmd_exec);
+  job_result[ijob-ifirst] = return_code;
   printf("Job %d on process %d finished\n", ijob, ThisTask);
   job_running = 0;
   return NULL;
@@ -173,11 +182,13 @@ void *run_job(void *ptr)
 
 int main(int argc, char *argv[])
 {
-  int ifirst, ilast;
   int njobs_tot;
   int next_to_assign;
   int iproc;
   int job_received;
+  int ijob;
+  int *job_result_all;
+  int nfailed;
 
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &ThisTask);
@@ -214,6 +225,11 @@ int main(int argc, char *argv[])
   /* Initial number of jobs to assign */
   njobs_tot      = ilast-ifirst+1;
   next_to_assign = ifirst;
+
+  /* Initialize results table */
+  job_result = malloc(sizeof(int)*njobs_tot);
+  for(ijob=0;ijob<njobs_tot;ijob+=1)
+      job_result[ijob] = INT_MIN;
 
   if(ThisTask==0)
     {
@@ -360,13 +376,44 @@ int main(int argc, char *argv[])
 	    }
 	}
     }
-
+  fflush(stdout);
+  fflush(stderr);
   MPI_Barrier(MPI_COMM_WORLD);
 
+  /* Report if any jobs failed */
+  job_result_all = malloc(sizeof(int)*njobs_tot);
+  MPI_Reduce(job_result, job_result_all, njobs_tot, MPI_INT, MPI_MAX, 0, 
+             MPI_COMM_WORLD);
   if(ThisTask==0)
-    printf("All jobs complete.\n");
-
+      {
+          printf("\n\nRan jobs %d to %d (total no. of jobs = %d)\n\n", ifirst, ilast, njobs_tot);
+          nfailed = 0;
+          for(ijob=0;ijob<njobs_tot;ijob+=1)
+              {
+                  if(job_result_all[ijob] != 0)
+                      {
+                          nfailed += 1;
+                          printf("ERROR: Job %d returned non-zero exit code %d\n", ijob+ifirst, job_result_all[ijob]);
+                      }
+              }
+          if(nfailed>0)printf("\n");
+      }
+  free(job_result_all);
+  free(job_result);
+  MPI_Bcast(&nfailed, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  if(ThisTask==0)
+      {
+          if(nfailed==0)
+              printf("All jobs completed with zero exit code\n");
+          else
+              printf("Number of jobs with non-zero exit code: %d of %d\n", nfailed, njobs_tot);
+      }
+  
   MPI_Finalize();
   
-  return 0;
+  /* All MPI tasks return non-zero exit code if any job failed */
+  if(nfailed==0)
+      return 0;
+  else
+      return 1;
 }
