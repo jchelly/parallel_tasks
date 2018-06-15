@@ -1,0 +1,4 @@
+*.o
+parallel_tasks
+*~
+my_job_out
