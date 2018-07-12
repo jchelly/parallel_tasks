@@ -1,5 +1,5 @@
 CC      = mpicc
-CFLAGS  = -g
+CFLAGS  = -g -Wall
 
 .SUFFIXES:
 .SUFFIXES: .c .o
