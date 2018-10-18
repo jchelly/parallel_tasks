@@ -1,30 +1,30 @@
 #!/bin/tcsh
 #
-#BSUB -L /bin/tcsh
-#
 # This sets the total number of cores to use
-# (combined with -R, below, this sets the number of nodes to use)
-#BSUB -n 6
+#SBATCH --ntasks 16
 #
 # This sets how many cores to use on each node
-#BSUB -R "span[ptile=3]"
+#SBATCH --tasks-per-node=16
 #
-#BSUB -J my_job_name
-#BSUB -oo my_job_out
-#BSUB -q cosma
-#BSUB -P durham
-#BSUB -W 1:00
+#SBATCH --exclusive
+#SBATCH -J job_name
+#SBATCH -o standard_output_file.%J.out
+#SBATCH -e standard_error_file.%J.err
+#SBATCH -p cosma
+#SBATCH -A durham
+#SBATCH -t 2:00:00
+#
 
 # Need to load the same MPI module which parallel_tasks was built with
 module purge
-module load intel_comp/c4/2015 platform_mpi/9.1.2 python/2.7.10
+module load intel_comp/2018 intel_mpi
 
 #
 # Run the python script
 #
 # This runs 20 instances of hello.py, passing the job index 1-20
 # as a command line parameter. The number of cpus used depends
-# on the -n and -R flags at the top of this script.
+# on the --ntasks parameter at the top of this script.
 #
 # The number of jobs to run is independent of the number of cpus used.
 # Running more jobs or using fewer cpus will just take longer.
