@@ -189,8 +189,14 @@ int main(int argc, char *argv[])
   int ijob;
   int *job_result_all;
   int nfailed;
+  int provided;
 
-  MPI_Init(&argc, &argv);
+  MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
+  if(provided<MPI_THREAD_FUNNELED)
+    {
+      printf("This program needs MPI with at least MPI_THREAD_FUNNELED thread support\n");
+      MPI_Abort(MPI_COMM_WORLD, 1);
+    }
   MPI_Comm_rank(MPI_COMM_WORLD, &ThisTask);
   MPI_Comm_size(MPI_COMM_WORLD, &NTask);
 
