@@ -21,8 +21,9 @@ volatile int job_running;
 static char command[COMMAND_LENGTH];
 
 /* MPI tags */
-#define JOB_REQUEST_TAG 1
-#define TERMINATION_TAG 2
+#define JOB_REQUEST_TAG  1
+#define JOB_RESPONSE_TAG 2
+#define TERMINATION_TAG  3
 
 /* Range of job indexes to do */
 static int ifirst, ilast;
@@ -184,8 +185,6 @@ int main(int argc, char *argv[])
 {
   int njobs_tot;
   int next_to_assign;
-  int iproc;
-  int job_received;
   int ijob;
   int *job_result_all;
   int nfailed;
@@ -299,7 +298,7 @@ int main(int argc, char *argv[])
 		  int ireq;
 		  int ijob;
 		  MPI_Recv(&ireq, 1, MPI_INT, 
-			   probe_status.MPI_SOURCE, probe_status.MPI_TAG, 
+			   probe_status.MPI_SOURCE, JOB_REQUEST_TAG, 
 			   MPI_COMM_WORLD, &recv_status);
 		  /* Check if we have jobs to hand out */
 		  if(next_to_assign <= ilast)
@@ -314,14 +313,15 @@ int main(int argc, char *argv[])
 		      ijob = -1;
 		    }
 		  /* Send the job index back */
-		  MPI_Send(&ijob, 1, MPI_INT, probe_status.MPI_SOURCE, 
-			   JOB_REQUEST_TAG, MPI_COMM_WORLD);
+		  MPI_Ssend(&ijob, 1, MPI_INT, probe_status.MPI_SOURCE, 
+                            JOB_RESPONSE_TAG, MPI_COMM_WORLD);
 		}
 	    }
 
 	  /* Go back to sleep */
 	  sleep(SLEEP_TIME);
 	}
+#ifdef TERMINATE_SIGNAL
       /* 
 	 At this point, all jobs are complete so signal other tasks.
 	 This is just to avoid having them sit at 100% cpu in MPI_Barrier.
@@ -330,6 +330,7 @@ int main(int argc, char *argv[])
       int dummy = 1;
       for(i=1;i<NTask;i+=1)
 	MPI_Send(&dummy, 1, MPI_INT, i, TERMINATION_TAG, MPI_COMM_WORLD);
+#endif
     }
   else
     {
@@ -343,9 +344,9 @@ int main(int argc, char *argv[])
 	  int ijob;
 	  MPI_Status status;
 	  /* Ask for a job */
-	  MPI_Sendrecv(&ireq, 1, MPI_INT, 0, JOB_REQUEST_TAG,
-		       &ijob, 1, MPI_INT, 0, JOB_REQUEST_TAG,
-		       MPI_COMM_WORLD, &status);
+	  MPI_Ssend(&ireq, 1, MPI_INT, 0, JOB_REQUEST_TAG, MPI_COMM_WORLD);
+          /* Receive job index */
+	  MPI_Recv(&ijob, 1, MPI_INT, 0, JOB_RESPONSE_TAG, MPI_COMM_WORLD, &status);
 	  if(ijob >= 0)
 	    {
 	      /* Run the job if we got one */
@@ -357,6 +358,7 @@ int main(int argc, char *argv[])
 	      break;
 	    }
 	}
+#ifdef TERMINATE_SIGNAL
       /*
 	Now wait for termination signal from task 0
       */
@@ -381,9 +383,8 @@ int main(int argc, char *argv[])
 	      sleep(SLEEP_TIME);
 	    }
 	}
+#endif
     }
-  fflush(stdout);
-  fflush(stderr);
   MPI_Barrier(MPI_COMM_WORLD);
 
   /* Report if any jobs failed */
