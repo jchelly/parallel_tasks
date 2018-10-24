@@ -1,5 +1,5 @@
 CC      = mpicc
-CFLAGS  = -g -Wall
+CFLAGS  = -g -O0 -Wall -pthread
 
 .SUFFIXES:
 .SUFFIXES: .c .o
