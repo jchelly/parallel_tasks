@@ -14,7 +14,8 @@ static int NTask;
 static int ThisTask;
 
 /* Flag to signal job completion */
-volatile int job_running;
+pthread_mutex_t job_running_mutex = PTHREAD_MUTEX_INITIALIZER;
+int job_running = 0;
 
 /* Maximum length of command to execute */
 #define COMMAND_LENGTH 4096
@@ -175,7 +176,9 @@ void *run_job(void *ptr)
   return_code = system(cmd_exec);
   job_result[ijob-ifirst] = return_code;
   printf("Job %d on process %d finished\n", ijob, ThisTask);
+  pthread_mutex_lock( &job_running_mutex);
   job_running = 0;
+  pthread_mutex_unlock( &job_running_mutex);
   return NULL;
 }
 
@@ -249,14 +252,19 @@ int main(int argc, char *argv[])
       int proc0_done = 0;
       int local_job  = -1;
       pthread_t job_thread;
-      job_running    = 0;
+      pthread_mutex_lock( &job_running_mutex);
+      job_running = 0;
+      pthread_mutex_unlock( &job_running_mutex);
       while((nfinished < NTask-1) || (proc0_done==0))
 	{
 	  int flag;
 	  MPI_Status probe_status;
 	  MPI_Status recv_status;
 	  /* If no local job is running, try to start one */
-	  if(job_running == 0)
+          pthread_mutex_lock( &job_running_mutex);
+          int is_running = job_running;
+          pthread_mutex_unlock( &job_running_mutex);
+	  if(is_running == 0)
 	    {
 	      /* Wait for thread which ran the previous job to finish */
 	      if(local_job >= 0)
@@ -269,7 +277,9 @@ int main(int argc, char *argv[])
 	      if(next_to_assign <= ilast)
 		{
 		  /* Launch the next job in a new thread */
+                  pthread_mutex_lock(&job_running_mutex);
 		  job_running = 1;
+                  pthread_mutex_unlock(&job_running_mutex);
 		  local_job = next_to_assign;
 		  pthread_create(&job_thread, NULL, 
 				 &run_job, 
