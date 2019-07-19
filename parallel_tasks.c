@@ -248,18 +248,27 @@ int main(int argc, char *argv[])
 	responding to job requests. The main thread spends most
 	of its time sleeping to avoid taking cpu time from the jobs.
       */
+
+      /* Need to track which processors have finished */
       int nfinished  = 0;
       int proc0_done = 0;
       int local_job  = -1;
+
+      /* Initially have no local job running */
       pthread_t job_thread;
       pthread_mutex_lock( &job_running_mutex);
       job_running = 0;
       pthread_mutex_unlock( &job_running_mutex);
+
+      /* Request object used to receive job requests */
+      MPI_Request recv_request; 
+      int recv_posted = 0;
+
+      /* Dummy buffer for receive (we don't care about the received value) */
+      int ireq;
+
       while((nfinished < NTask-1) || (proc0_done==0))
 	{
-	  int flag;
-	  MPI_Status probe_status;
-	  MPI_Status recv_status;
 	  /* If no local job is running, try to start one */
           pthread_mutex_lock( &job_running_mutex);
           int is_running = job_running;
@@ -297,20 +306,25 @@ int main(int argc, char *argv[])
 	     Check for job requests from other processes.
 	     May be more than one message waiting
 	  */
-	  flag = 1;
-	  while(flag)
-	    {
-	      MPI_Iprobe(MPI_ANY_SOURCE, JOB_REQUEST_TAG, MPI_COMM_WORLD, 
-			 &flag, &probe_status);
-	      if(flag)
-		{
-		  /* We have a job request to deal with  */
-		  int ireq;
-		  int ijob;
-		  MPI_Recv(&ireq, 1, MPI_INT, 
-			   probe_status.MPI_SOURCE, JOB_REQUEST_TAG, 
-			   MPI_COMM_WORLD, &recv_status);
-		  /* Check if we have jobs to hand out */
+          while(nfinished<NTask-1)
+            {
+
+              /* Ensure we posted a receive, if we're expecting a message */
+              if(!recv_posted)
+                {
+                  MPI_Irecv(&ireq, 1, MPI_INT, MPI_ANY_SOURCE, JOB_REQUEST_TAG, 
+                            MPI_COMM_WORLD, &recv_request);
+                  recv_posted = 1;
+                }
+
+              /* Check if we actually received a message */
+              int flag;
+              MPI_Status recv_status;
+              MPI_Test(&recv_request, &flag, &recv_status);
+              if(flag)
+                {
+		  /* We have a job request. Check if we have jobs to hand out */
+                  int ijob;
 		  if(next_to_assign <= ilast)
 		    {
 		      ijob = next_to_assign;
@@ -323,13 +337,22 @@ int main(int argc, char *argv[])
 		      ijob = -1;
 		    }
 		  /* Send the job index back */
-		  MPI_Ssend(&ijob, 1, MPI_INT, probe_status.MPI_SOURCE, 
+		  MPI_Ssend(&ijob, 1, MPI_INT, recv_status.MPI_SOURCE, 
                             JOB_RESPONSE_TAG, MPI_COMM_WORLD);
-		}
-	    }
+
+                  /* We no longer have a pending receive */
+                  recv_posted = 0;
+                }
+              else
+                {
+                  /* We didn't receive a message, so we're done for now */
+                  break;
+                }
+            }
 
 	  /* Go back to sleep */
-	  sleep(SLEEP_TIME);
+          sleep(SLEEP_TIME);
+
 	}
 #ifdef TERMINATE_SIGNAL
       /* 
@@ -372,29 +395,25 @@ int main(int argc, char *argv[])
       /*
 	Now wait for termination signal from task 0
       */
-      int flag = 0;
-      while(!flag)
-	{
-	  MPI_Status probe_status;
-	  MPI_Status recv_status;	  
-	  MPI_Iprobe(0, TERMINATION_TAG, MPI_COMM_WORLD, 
-		     &flag, &probe_status);
-	  if(flag)
-	    {
-	      /* Termination message is waiting */
-	      int dummy;
-	      MPI_Recv(&dummy, 1, MPI_INT, 
-		       probe_status.MPI_SOURCE, probe_status.MPI_TAG, 
-		       MPI_COMM_WORLD, &recv_status);
-	    }
-	  else
-	    {
-	      /* Wait a bit before trying again */
-	      sleep(SLEEP_TIME);
-	    }
-	}
+      int dummy;
+      MPI_Request termination_request;
+      MPI_Status  termination_status;
+      MPI_Irecv(&dummy, 1, MPI_INT, 0, TERMINATION_TAG, 
+                MPI_COMM_WORLD, &termination_request);
+      while(1)
+        {
+          /* Check if we got the terminate signal */
+          int flag;
+          MPI_Test(&termination_request, &flag, &termination_status);
+          if(flag)break;
+          
+          /* If we didn't, wait a bit before trying again */
+          sleep(SLEEP_TIME);
+        }
 #endif
     }
+
+  /* If not using a terminate signal, all wait here once their jobs are done */
   MPI_Barrier(MPI_COMM_WORLD);
 
   /* Report if any jobs failed */
