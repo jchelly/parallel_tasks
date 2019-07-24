@@ -5,9 +5,7 @@
 #include <mpi.h>
 #include <unistd.h>
 #include <pthread.h>
-
-/* Time delay (secs) between checks for job requests */
-#define SLEEP_TIME 1
+#include <time.h>
 
 /* Number of processors, ID of this processor */
 static int NTask;
@@ -31,6 +29,18 @@ static int ifirst, ilast;
 
 /* Table of job results */
 int *job_result;
+
+/* Maximum time to wait when polling for incoming messages (nanosecs) */
+#define MAX_SLEEP_NS 1000000000
+
+/* Sleep for specified number of nanoseconds */
+void nanosec_sleep(long long n)
+{
+  struct timespec ts;
+  ts.tv_sec  = n / 1000000000;
+  ts.tv_nsec = n % 1000000000;
+  nanosleep(&ts, NULL);
+}
 
 /*
   Check to see what format specifier a string contains,
@@ -172,10 +182,8 @@ void *run_job(void *ptr)
     }
   
   /* Run the command */
-  printf("Running job %d on process %d\n", ijob, ThisTask);
   return_code = system(cmd_exec);
   job_result[ijob-ifirst] = return_code;
-  printf("Job %d on process %d finished\n", ijob, ThisTask);
   pthread_mutex_lock( &job_running_mutex);
   job_running = 0;
   pthread_mutex_unlock( &job_running_mutex);
@@ -192,6 +200,7 @@ int main(int argc, char *argv[])
   int *job_result_all;
   int nfailed;
   int provided;
+  int last_job = -1;
 
   MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
   if(provided<MPI_THREAD_FUNNELED)
@@ -266,7 +275,7 @@ int main(int argc, char *argv[])
 
       /* Dummy buffer for receive (we don't care about the received value) */
       int ireq;
-
+      long long sleep_nsecs = 1;
       while((nfinished < NTask-1) || (proc0_done==0))
 	{
 	  /* If no local job is running, try to start one */
@@ -282,10 +291,15 @@ int main(int argc, char *argv[])
 		  local_job = -1;
 		}
 
+              /* Report job completion (if any) */
+              if(last_job>=0)printf("Job %d on process %d finished\n", last_job, 0);
+
 	      /* Check if we have jobs left to assign */
 	      if(next_to_assign <= ilast)
 		{
 		  /* Launch the next job in a new thread */
+                  last_job = next_to_assign;
+                  printf("Running job %d on process %d\n", next_to_assign, 0);
                   pthread_mutex_lock(&job_running_mutex);
 		  job_running = 1;
                   pthread_mutex_unlock(&job_running_mutex);
@@ -299,6 +313,7 @@ int main(int argc, char *argv[])
 		{
 		  /* No more jobs left */
 		  proc0_done = 1;
+                  last_job = -1;
 		}
 	    }
 
@@ -323,10 +338,14 @@ int main(int argc, char *argv[])
               MPI_Test(&recv_request, &flag, &recv_status);
               if(flag)
                 {
-		  /* We have a job request. Check if we have jobs to hand out */
+		  /* We have a job request. Report previous job completion (if any) */
+                  if(ireq>=0)printf("Job %d on process %d finished\n", ireq, recv_status.MPI_SOURCE);
+                  
+                  /* Check if we have jobs to hand out */
                   int ijob;
 		  if(next_to_assign <= ilast)
 		    {
+                      printf("Running job %d on process %d\n", next_to_assign, recv_status.MPI_SOURCE);
 		      ijob = next_to_assign;
 		      next_to_assign += 1;
 		    }
@@ -342,6 +361,7 @@ int main(int argc, char *argv[])
 
                   /* We no longer have a pending receive */
                   recv_posted = 0;
+                  sleep_nsecs = 1;
                 }
               else
                 {
@@ -351,7 +371,8 @@ int main(int argc, char *argv[])
             }
 
 	  /* Go back to sleep */
-          sleep(SLEEP_TIME);
+          nanosec_sleep(sleep_nsecs);
+          if(sleep_nsecs < MAX_SLEEP_NS)sleep_nsecs *= 2;
 
 	}
 #ifdef TERMINATE_SIGNAL
@@ -370,24 +391,28 @@ int main(int argc, char *argv[])
       /*
 	Processors other than 0 request and execute jobs
 	until there are none left (signalled by -ve job ID).
+
+        To request a job we send the index of the last job we
+        completed (or -1 if there was no job) to rank 0.
       */
       while(1)
 	{
-	  int ireq = 1;
 	  int ijob;
 	  MPI_Status status;
 	  /* Ask for a job */
-          MPI_Sendrecv(&ireq, 1, MPI_INT, 0, JOB_REQUEST_TAG,
-                       &ijob, 1, MPI_INT, 0, JOB_RESPONSE_TAG,
+          MPI_Sendrecv(&last_job, 1, MPI_INT, 0, JOB_REQUEST_TAG,
+                       &ijob,     1, MPI_INT, 0, JOB_RESPONSE_TAG,
                        MPI_COMM_WORLD, &status);
 	  if(ijob >= 0)
 	    {
 	      /* Run the job if we got one */
 	      run_job(&ijob);
+              last_job = ijob;
 	    }
 	  else
 	    {
 	      /* If there are no jobs left, we're done */
+              last_job = -1;
 	      break;
 	    }
 	}
@@ -400,6 +425,7 @@ int main(int argc, char *argv[])
       MPI_Status  termination_status;
       MPI_Irecv(&dummy, 1, MPI_INT, 0, TERMINATION_TAG, 
                 MPI_COMM_WORLD, &termination_request);
+      long long sleep_nsecs = 1;
       while(1)
         {
           /* Check if we got the terminate signal */
@@ -408,7 +434,8 @@ int main(int argc, char *argv[])
           if(flag)break;
           
           /* If we didn't, wait a bit before trying again */
-          sleep(SLEEP_TIME);
+          nanosec_sleep(sleep_nsecs);
+          if(sleep_nsecs < MAX_SLEEP_NS)sleep_nsecs *= 2;
         }
 #endif
     }
