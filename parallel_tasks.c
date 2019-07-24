@@ -337,8 +337,8 @@ int main(int argc, char *argv[])
 		      ijob = -1;
 		    }
 		  /* Send the job index back */
-		  MPI_Ssend(&ijob, 1, MPI_INT, recv_status.MPI_SOURCE, 
-                            JOB_RESPONSE_TAG, MPI_COMM_WORLD);
+		  MPI_Send(&ijob, 1, MPI_INT, recv_status.MPI_SOURCE, 
+                           JOB_RESPONSE_TAG, MPI_COMM_WORLD);
 
                   /* We no longer have a pending receive */
                   recv_posted = 0;
@@ -377,9 +377,9 @@ int main(int argc, char *argv[])
 	  int ijob;
 	  MPI_Status status;
 	  /* Ask for a job */
-	  MPI_Ssend(&ireq, 1, MPI_INT, 0, JOB_REQUEST_TAG, MPI_COMM_WORLD);
-          /* Receive job index */
-	  MPI_Recv(&ijob, 1, MPI_INT, 0, JOB_RESPONSE_TAG, MPI_COMM_WORLD, &status);
+          MPI_Sendrecv(&ireq, 1, MPI_INT, 0, JOB_REQUEST_TAG,
+                       &ijob, 1, MPI_INT, 0, JOB_RESPONSE_TAG,
+                       MPI_COMM_WORLD, &status);
 	  if(ijob >= 0)
 	    {
 	      /* Run the job if we got one */
