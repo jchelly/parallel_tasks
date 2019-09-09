@@ -269,12 +269,18 @@ int main(int argc, char *argv[])
       job_running = 0;
       pthread_mutex_unlock( &job_running_mutex);
 
-      /* Request object used to receive job requests */
-      MPI_Request recv_request; 
-      int recv_posted = 0;
+      /* Post receives from all other tasks */
+      int src;
+      MPI_Request *requests = malloc(sizeof(MPI_Request)*(NTask-1));
+      int *ireq = malloc(sizeof(int)*(NTask-1));
+      for(src=1;src<NTask;src+=1)
+        {
+          MPI_Irecv(&ireq[src-1], 1, MPI_INT, src, JOB_REQUEST_TAG, 
+                    MPI_COMM_WORLD, &requests[src-1]);
+        }
+      MPI_Barrier(MPI_COMM_WORLD);
 
-      /* Dummy buffer for receive (we don't care about the received value) */
-      int ireq;
+      /* Loop waiting for incoming messages */
       long long sleep_nsecs = 1;
       while((nfinished < NTask-1) || (proc0_done==0))
 	{
@@ -323,31 +329,37 @@ int main(int argc, char *argv[])
 	  */
           while(nfinished<NTask-1)
             {
-
-              /* Ensure we posted a receive, if we're expecting a message */
-              if(!recv_posted)
-                {
-                  MPI_Irecv(&ireq, 1, MPI_INT, MPI_ANY_SOURCE, JOB_REQUEST_TAG, 
-                            MPI_COMM_WORLD, &recv_request);
-                  recv_posted = 1;
-                }
-
-              /* Check if we actually received a message */
-              int flag;
-              MPI_Status recv_status;
-              MPI_Test(&recv_request, &flag, &recv_status);
+              /* Test if any of our posted receives have completed */
+              int indx, flag;
+              MPI_Testany(NTask-1, requests, &indx, &flag, MPI_STATUS_IGNORE);
               if(flag)
                 {
-		  /* We have a job request. Report previous job completion (if any) */
-                  if(ireq>=0)printf("Job %d on process %d finished\n", ireq, recv_status.MPI_SOURCE);
+                  /* Should never be doing MPI_Testall on array of all null requests */
+                  if(indx==MPI_UNDEFINED)
+                    {
+                      printf("Something wrong here: source index is undefined");
+                      MPI_Abort(MPI_COMM_WORLD, 1);
+                    }
+
+                  /* Determine task we received from and index of any completed job */
+                  int source_task = indx+1;
+                  int completed_job = ireq[indx];
+
+		  /* Report previous job completion (if any) */
+                  if(completed_job>=0)printf("Job %d on process %d finished\n", completed_job, source_task);
                   
                   /* Check if we have jobs to hand out */
                   int ijob;
 		  if(next_to_assign <= ilast)
 		    {
-                      printf("Running job %d on process %d\n", next_to_assign, recv_status.MPI_SOURCE);
+                      /* Choose job to assign */
+                      printf("Running job %d on process %d\n", next_to_assign, source_task);
 		      ijob = next_to_assign;
 		      next_to_assign += 1;
+
+                      /* Post a new receive because we're expecting further messages from this task */
+                      MPI_Irecv(&ireq[source_task-1], 1, MPI_INT, source_task, JOB_REQUEST_TAG,
+                                MPI_COMM_WORLD, &requests[source_task-1]);
 		    }
 		  else
 		    {
@@ -356,11 +368,9 @@ int main(int argc, char *argv[])
 		      ijob = -1;
 		    }
 		  /* Send the job index back */
-		  MPI_Send(&ijob, 1, MPI_INT, recv_status.MPI_SOURCE, 
-                           JOB_RESPONSE_TAG, MPI_COMM_WORLD);
+		  MPI_Send(&ijob, 1, MPI_INT, source_task, JOB_RESPONSE_TAG, MPI_COMM_WORLD);
 
-                  /* We no longer have a pending receive */
-                  recv_posted = 0;
+                  /* Reset the sleep delay to a small value */
                   sleep_nsecs = 1;
                 }
               else
@@ -373,8 +383,8 @@ int main(int argc, char *argv[])
 	  /* Go back to sleep */
           nanosec_sleep(sleep_nsecs);
           if(sleep_nsecs < MAX_SLEEP_NS)sleep_nsecs *= 2;
-
 	}
+
 #ifdef TERMINATE_SIGNAL
       /* 
 	 At this point, all jobs are complete so signal other tasks.
@@ -395,6 +405,7 @@ int main(int argc, char *argv[])
         To request a job we send the index of the last job we
         completed (or -1 if there was no job) to rank 0.
       */
+      MPI_Barrier(MPI_COMM_WORLD);
       while(1)
 	{
 	  int ijob;
@@ -448,29 +459,29 @@ int main(int argc, char *argv[])
   MPI_Reduce(job_result, job_result_all, njobs_tot, MPI_INT, MPI_MAX, 0, 
              MPI_COMM_WORLD);
   if(ThisTask==0)
-      {
-          printf("\n\nRan jobs %d to %d (total no. of jobs = %d)\n\n", ifirst, ilast, njobs_tot);
-          nfailed = 0;
-          for(ijob=0;ijob<njobs_tot;ijob+=1)
-              {
-                  if(job_result_all[ijob] != 0)
-                      {
-                          nfailed += 1;
-                          printf("ERROR: Job %d returned non-zero exit code %d\n", ijob+ifirst, job_result_all[ijob]);
-                      }
-              }
-          if(nfailed>0)printf("\n");
-      }
+    {
+      printf("\n\nRan jobs %d to %d (total no. of jobs = %d)\n\n", ifirst, ilast, njobs_tot);
+      nfailed = 0;
+      for(ijob=0;ijob<njobs_tot;ijob+=1)
+        {
+          if(job_result_all[ijob] != 0)
+            {
+              nfailed += 1;
+              printf("ERROR: Job %d returned non-zero exit code %d\n", ijob+ifirst, job_result_all[ijob]);
+            }
+        }
+      if(nfailed>0)printf("\n");
+    }
   free(job_result_all);
   free(job_result);
   MPI_Bcast(&nfailed, 1, MPI_INT, 0, MPI_COMM_WORLD);
   if(ThisTask==0)
-      {
-          if(nfailed==0)
-              printf("All jobs completed with zero exit code\n");
-          else
-              printf("Number of jobs with non-zero exit code: %d of %d\n", nfailed, njobs_tot);
-      }
+    {
+      if(nfailed==0)
+        printf("All jobs completed with zero exit code\n");
+      else
+        printf("Number of jobs with non-zero exit code: %d of %d\n", nfailed, njobs_tot);
+    }
   
   MPI_Finalize();
   
