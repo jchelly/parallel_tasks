@@ -7,6 +7,8 @@
 #include <pthread.h>
 #include <time.h>
 
+#define TERMINATE_SIGNAL
+
 /* Number of processors, ID of this processor */
 static int NTask;
 static int ThisTask;
