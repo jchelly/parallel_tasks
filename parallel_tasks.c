@@ -274,10 +274,11 @@ int main(int argc, char *argv[])
       /* Post receives from all other tasks */
       int src;
       MPI_Request *requests = malloc(sizeof(MPI_Request)*(NTask-1));
-      int *ireq = malloc(sizeof(int)*(NTask-1));
+      int *recvbufs = malloc(sizeof(int)*(NTask-1));
+      int *index_complete = malloc(sizeof(int)*(NTask-1));
       for(src=1;src<NTask;src+=1)
         {
-          MPI_Irecv(&ireq[src-1], 1, MPI_INT, src, JOB_REQUEST_TAG, 
+          MPI_Irecv(&recvbufs[src-1], 1, MPI_INT, src, JOB_REQUEST_TAG, 
                     MPI_COMM_WORLD, &requests[src-1]);
         }
       MPI_Barrier(MPI_COMM_WORLD);
@@ -297,6 +298,8 @@ int main(int argc, char *argv[])
 		{
 		  pthread_join(job_thread, NULL);
 		  local_job = -1;
+                  /* Reset sleep timer if a local job finishes */
+                  sleep_nsecs = 1;
 		}
 
               /* Report job completion (if any) */
@@ -327,65 +330,65 @@ int main(int argc, char *argv[])
 
 	  /* 
 	     Check for job requests from other processes.
-	     May be more than one message waiting
 	  */
-          while(nfinished<NTask-1)
+          if(nfinished < NTask-1)
             {
-              /* Test if any of our posted receives have completed */
-              int indx, flag;
-              MPI_Testany(NTask-1, requests, &indx, &flag, MPI_STATUS_IGNORE);
-              if(flag)
+              /* Check for incoming messages */
+              int num_complete, icomplete;
+              MPI_Testsome(NTask-1, requests, &num_complete, index_complete, MPI_STATUSES_IGNORE);
+
+              /* Loop over job requests which just arrived */
+              for(icomplete=0;icomplete<num_complete;icomplete+=1)
                 {
-                  /* Should never be doing MPI_Testall on array of all null requests */
-                  if(indx==MPI_UNDEFINED)
-                    {
-                      printf("Something wrong here: source index is undefined");
-                      MPI_Abort(MPI_COMM_WORLD, 1);
-                    }
-
                   /* Determine task we received from and index of any completed job */
-                  int source_task = indx+1;
-                  int completed_job = ireq[indx];
+                  int source_task   = index_complete[icomplete]+1;
+                  int completed_job = recvbufs[index_complete[icomplete]];
 
-		  /* Report previous job completion (if any) */
+                  /* Report previous job completion (if any) */
                   if(completed_job>=0)printf("Job %d on process %d finished\n", completed_job, source_task);
                   
                   /* Check if we have jobs to hand out */
                   int ijob;
-		  if(next_to_assign <= ilast)
-		    {
+                  if(next_to_assign <= ilast)
+                    {
                       /* Choose job to assign */
                       printf("Running job %d on process %d\n", next_to_assign, source_task);
-		      ijob = next_to_assign;
-		      next_to_assign += 1;
-
+                      ijob = next_to_assign;
+                      next_to_assign += 1;
+                      
                       /* Post a new receive because we're expecting further messages from this task */
-                      MPI_Irecv(&ireq[source_task-1], 1, MPI_INT, source_task, JOB_REQUEST_TAG,
+                      MPI_Irecv(&recvbufs[source_task-1], 1, MPI_INT, source_task, JOB_REQUEST_TAG,
                                 MPI_COMM_WORLD, &requests[source_task-1]);
-		    }
-		  else
-		    {
-		      /* No more jobs for this processor */
-		      nfinished += 1;
-		      ijob = -1;
-		    }
-		  /* Send the job index back */
-		  MPI_Send(&ijob, 1, MPI_INT, source_task, JOB_RESPONSE_TAG, MPI_COMM_WORLD);
-
+                    }
+                  else
+                    {
+                      /* No more jobs for this processor */
+                      nfinished += 1;
+                      ijob = -1;
+                    }
+                  /* Send the job index back */
+                  MPI_Send(&ijob, 1, MPI_INT, source_task, JOB_RESPONSE_TAG, MPI_COMM_WORLD);
+              
                   /* Reset the sleep delay to a small value */
                   sleep_nsecs = 1;
                 }
-              else
-                {
-                  /* We didn't receive a message, so we're done for now */
-                  break;
-                }
             }
-
 	  /* Go back to sleep */
           nanosec_sleep(sleep_nsecs);
           if(sleep_nsecs < MAX_SLEEP_NS)sleep_nsecs *= 2;
 	}
+
+      /* All request handles should be null by now */
+      for(src=1;src<NTask;src+=1)
+        {
+          if(requests[src-1] != MPI_REQUEST_NULL)
+            {
+              printf("Something wrong here: all requests should be null at this point");
+              MPI_Abort(MPI_COMM_WORLD, 1);
+            }
+        }
+      free(requests);
+      free(recvbufs);
 
 #ifdef TERMINATE_SIGNAL
       /* 
