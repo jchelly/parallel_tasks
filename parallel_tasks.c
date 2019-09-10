@@ -353,12 +353,10 @@ int main(int argc, char *argv[])
 	  /* 
 	     Check for job requests from other processes.
 	  */
-          if(nfinished < NTask-1)
+          int num_complete, icomplete;
+          MPI_Testsome(NTask-1, requests, &num_complete, index_complete, MPI_STATUSES_IGNORE);
+          if((num_complete > 0) && (num_complete != MPI_UNDEFINED))
             {
-              /* Check for incoming messages */
-              int num_complete, icomplete;
-              MPI_Testsome(NTask-1, requests, &num_complete, index_complete, MPI_STATUSES_IGNORE);
-
               /* Loop over job requests which just arrived */
               for(icomplete=0;icomplete<num_complete;icomplete+=1)
                 {
