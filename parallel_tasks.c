@@ -32,6 +32,9 @@ static int ifirst, ilast;
 /* Table of job results */
 int *job_result;
 
+/* Job elapsed times */
+double *job_time;
+
 /* Maximum time to wait when polling for incoming messages (nanosecs) */
 #define MAX_SLEEP_NS 1000000000
 
@@ -42,6 +45,14 @@ void nanosec_sleep(long long n)
   ts.tv_sec  = n / 1000000000;
   ts.tv_nsec = n % 1000000000;
   nanosleep(&ts, NULL);
+}
+
+/* Get wall clock time in seconds as a double */
+double get_time()
+{
+  struct timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return ((double) t.tv_nsec)/1.0e9+t.tv_sec;
 }
 
 /*
@@ -184,8 +195,11 @@ void *run_job(void *ptr)
     }
   
   /* Run the command */
+  double start_time = get_time();
   return_code = system(cmd_exec);
+  double finish_time = get_time();
   job_result[ijob-ifirst] = return_code;
+  job_time[ijob-ifirst] = (finish_time-start_time);
   pthread_mutex_lock( &job_running_mutex);
   job_running = 0;
   pthread_mutex_unlock( &job_running_mutex);
@@ -200,6 +214,7 @@ int main(int argc, char *argv[])
   int next_to_assign;
   int ijob;
   int *job_result_all;
+  double *job_time_all;
   int nfailed;
   int provided;
   int last_job = -1;
@@ -247,8 +262,15 @@ int main(int argc, char *argv[])
 
   /* Initialize results table */
   job_result = malloc(sizeof(int)*njobs_tot);
+  job_time   = malloc(sizeof(double)*njobs_tot);
   for(ijob=0;ijob<njobs_tot;ijob+=1)
+    {
       job_result[ijob] = INT_MIN;
+      job_time[ijob] = -1.0;
+    }
+
+  /* Start the clock */
+  double start_time = get_time();
 
   if(ThisTask==0)
     {
@@ -459,13 +481,41 @@ int main(int argc, char *argv[])
   /* If not using a terminate signal, all wait here once their jobs are done */
   MPI_Barrier(MPI_COMM_WORLD);
 
-  /* Report if any jobs failed */
+  /* Stop the clock */
+  double finish_time = get_time();
+
+  /* Gather exit codes and run times */
   job_result_all = malloc(sizeof(int)*njobs_tot);
   MPI_Reduce(job_result, job_result_all, njobs_tot, MPI_INT, MPI_MAX, 0, 
              MPI_COMM_WORLD);
+  job_time_all = malloc(sizeof(double)*njobs_tot);
+  MPI_Reduce(job_time, job_time_all, njobs_tot, MPI_DOUBLE, MPI_MAX, 0, 
+             MPI_COMM_WORLD);
+  
   if(ThisTask==0)
     {
-      printf("\n\nRan jobs %d to %d (total no. of jobs = %d)\n\n", ifirst, ilast, njobs_tot);
+      /* Calculate idle time */
+      double total_time = (finish_time-start_time)*NTask;
+      double idle_time = total_time;
+      double max_time = 0.0;
+      double min_time = total_time;
+      for(ijob=0;ijob<njobs_tot;ijob+=1)
+        {
+          idle_time -= job_time_all[ijob];
+          min_time = job_time_all[ijob] < min_time ? job_time_all[ijob] : min_time;
+          max_time = job_time_all[ijob] > max_time ? job_time_all[ijob] : max_time;
+        }
+
+      /* Generate a report */      
+      printf("\nElapsed time:\n");
+      printf("-------------\n");
+      printf("\nRan jobs %d to %d in %f seconds (total no. of jobs = %d)\n", 
+             ifirst, ilast, (finish_time-start_time), njobs_tot);
+      printf("Shortest job: %f seconds\n", min_time);
+      printf("Longest  job: %f seconds\n", max_time);
+      printf("Idle time: %.2f%%\n", idle_time/total_time*100);
+      printf("\nJob exit codes:\n");
+      printf("---------------\n\n");
       nfailed = 0;
       for(ijob=0;ijob<njobs_tot;ijob+=1)
         {
@@ -479,6 +529,8 @@ int main(int argc, char *argv[])
     }
   free(job_result_all);
   free(job_result);
+  free(job_time_all);
+  free(job_time);
   MPI_Bcast(&nfailed, 1, MPI_INT, 0, MPI_COMM_WORLD);
   if(ThisTask==0)
     {
