@@ -434,11 +434,10 @@ int main(int argc, char *argv[])
       while(1)
 	{
 	  int ijob;
-	  MPI_Status status;
 	  /* Ask for a job */
           MPI_Sendrecv(&last_job, 1, MPI_INT, 0, JOB_REQUEST_TAG,
                        &ijob,     1, MPI_INT, 0, JOB_RESPONSE_TAG,
-                       MPI_COMM_WORLD, &status);
+                       MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 	  if(ijob >= 0)
 	    {
 	      /* Run the job if we got one */
@@ -458,7 +457,6 @@ int main(int argc, char *argv[])
       */
       int dummy;
       MPI_Request termination_request;
-      MPI_Status  termination_status;
       MPI_Irecv(&dummy, 1, MPI_INT, 0, TERMINATION_TAG, 
                 MPI_COMM_WORLD, &termination_request);
       long long sleep_nsecs = 1;
@@ -466,7 +464,7 @@ int main(int argc, char *argv[])
         {
           /* Check if we got the terminate signal */
           int flag;
-          MPI_Test(&termination_request, &flag, &termination_status);
+          MPI_Test(&termination_request, &flag, MPI_STATUS_IGNORE);
           if(flag)break;
           
           /* If we didn't, wait a bit before trying again */
