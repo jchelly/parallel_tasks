@@ -198,6 +198,18 @@ void *run_job(void *ptr)
   double start_time = get_time();
   return_code = system(cmd_exec);
   double finish_time = get_time();
+
+  /* On certain return codes, we should abort all jobs */
+  switch (return_code)
+    {
+    case 9:
+    case 137:
+      fprintf(stderr, "Job %d returned code %d (assumed to mean SIGKILL). Aborting all jobs.\n", ijob, return_code);
+      MPI_Abort(MPI_COMM_WORLD, 1);
+      break;
+    }
+
+  /* Return job result and run time */
   job_result[ijob-ifirst] = return_code;
   job_time[ijob-ifirst] = (finish_time-start_time);
   pthread_mutex_lock( &job_running_mutex);
