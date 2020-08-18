@@ -34,4 +34,7 @@ extern double *job_time;
 /* Maximum time to wait when polling for incoming messages (nanosecs) */
 #define MAX_SLEEP_NS 1000000000
 
+/* Lines read from command file */
+extern char **command_line;
+
 #endif

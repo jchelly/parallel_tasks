@@ -12,7 +12,7 @@
 
 void *run_job(void *ptr)
 {
-  char cmd_exec[COMMAND_LENGTH];
+  char cmd_exec[10*COMMAND_LENGTH];
   char tmp[COMMAND_LENGTH];
   int ijob = *((int *) ptr);
   size_t exec_offset = 0;
@@ -24,6 +24,8 @@ void *run_job(void *ptr)
   /* 
      Construct command by substituting in job index
      wherever we find an int or double format specifier
+
+     TODO: change sprintfs to snprintfs
   */
   while(offset < len)
     {
@@ -46,28 +48,64 @@ void *run_job(void *ptr)
 	    case 'd':
 	    case 'i':
 	      {
-		sprintf(cmd_exec+exec_offset, tmp, ijob);
-		exec_offset = strlen(cmd_exec);
-		offset += fpos + 1;
-	      }
-	    break;
-	    case 'f':
+                /* This is an integer format specifier */
+                if(command_line)
+                  {
+                    printf("Found integer specifier when expecting a string\n");
+                    MPI_Abort(MPI_COMM_WORLD, 1);
+                  } 
+                else 
+                  {
+                    sprintf(cmd_exec+exec_offset, tmp, ijob);
+                    exec_offset = strlen(cmd_exec);
+                    offset += fpos + 1;
+                  }
+              }
+              break;
+            case 'f':
 	    case 'e':
 	    case 'E':
 	    case 'g':
 	    case 'G':
 	      {
-		sprintf(cmd_exec+exec_offset, tmp, (double) ijob);
-		exec_offset = strlen(cmd_exec);
-		offset += fpos + 1;
+                /* This is a float format specifier */
+                if(command_line)
+                  {
+                    printf("Found float specifier when expecting a string\n");
+                    MPI_Abort(MPI_COMM_WORLD, 1);
+                  } 
+                else 
+                  {
+                    sprintf(cmd_exec+exec_offset, tmp, (double) ijob);
+                    exec_offset = strlen(cmd_exec);
+                    offset += fpos + 1;
+                  }
 	      }
-	    break;
-	    default:
-	      /* Can't handle this format, so just copy */
-	      strncpy(cmd_exec+exec_offset, command+offset, 
-		     COMMAND_LENGTH-exec_offset);
-	      offset = len;
-	    }
+              break;
+            case 's':
+              {
+                /* This is a string format specifier */
+                if(!command_line)
+                  {
+                    printf("Found string specifier when expecting int/float\n");
+                    MPI_Abort(MPI_COMM_WORLD, 1);
+                  } 
+                else
+                  {
+                    sprintf(cmd_exec+exec_offset, tmp, command_line[ijob]);
+                    exec_offset = strlen(cmd_exec);
+                    offset += fpos + 1;
+                  }
+              }
+              break;
+            default:
+              {
+                /* Can't handle this format, so just copy */
+                strncpy(cmd_exec+exec_offset, command+offset, 
+                        COMMAND_LENGTH-exec_offset);
+                offset = len;
+              }
+            }
 	}
     }
   

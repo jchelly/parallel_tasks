@@ -21,3 +21,6 @@ int *job_result;
 
 /* Job elapsed times */
 double *job_time;
+
+/* Lines read from command file */
+char **command_line;

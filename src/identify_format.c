@@ -68,6 +68,7 @@ size_t identify_format(char *str, size_t len)
     case 'E':
     case 'g':
     case 'G':
+    case 's':
       return i;
     break;
     default:

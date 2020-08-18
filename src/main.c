@@ -13,19 +13,19 @@
 #include "nanosec_sleep.h"
 #include "master_task.h"
 #include "worker_task.h"
+#include "command_file.h"
 
 
 void usage(void) {
   printf("\n");
   printf("  parallel_tasks usage:\n");
   printf("\n");
-  printf("    mpirun -np N parallel_tasks ifirst ilast command\n");
+  printf("    mpirun -np N parallel_tasks ifirst ilast command_template\n");
   printf("\n");
   printf("    This runs the supplied command once for each index in the range ifirst\n");
   printf("    to ilast, substituting the index in place of any C integer format\n");
   printf("    specifiers.\n");
   printf("\n");
-  /*
   printf("  OR\n");
   printf("\n");
   printf("    mpirun -np N parallel_tasks command_file command_template\n");
@@ -37,7 +37,6 @@ void usage(void) {
   printf("  In both cases the command should be quoted to prevent the shell splitting\n");
   printf("  it into multiple arguments and up to N commands are run simultaneously\n");
   printf("\n");
-  */
 }
 
 
@@ -62,21 +61,36 @@ int main(int argc, char *argv[])
   /* Read command line args */
   if(ThisTask==0)
     {
-      if(argc != 4)
-	{
+      switch(argc)
+        {
+        case 3:
+          /* We have command_file, command_template */
+          ifirst = 0;
+          ilast = read_command_file(argv[1])-1;
+          if(ilast < 0) {
+            printf("Failed to read any lines from %s\n", argv[1]);
+            MPI_Abort(MPI_COMM_WORLD, 1);  
+          }
+          strncpy(command, argv[2], COMMAND_LENGTH);
+          break;
+        case 4:
+          /* We have ifirst, ilast, command_template */
+          sscanf(argv[1], "%d", &ifirst);
+          sscanf(argv[2], "%d", &ilast);
+          strncpy(command, argv[3], COMMAND_LENGTH);
+          command[COMMAND_LENGTH-1] = (char) 0;
+          if((ifirst < 0) || (ilast < 0))
+            {
+              printf("Job index must be non-negative!\n");
+              MPI_Abort(MPI_COMM_WORLD, 1);  
+            }
+          command_line = NULL;
+          break;
+        default:
+          /* Invalid number of arguments */
 	  usage();
 	  MPI_Abort(MPI_COMM_WORLD, 1);
-	}
-      sscanf(argv[1], "%d", &ifirst);
-      sscanf(argv[2], "%d", &ilast);
-      strncpy(command, argv[3], COMMAND_LENGTH);
-      command[COMMAND_LENGTH-1] = (char) 0;
-
-      if((ifirst < 0) || (ilast < 0))
-	{
-	  printf("Job index must be non-negative!\n");
-	  MPI_Abort(MPI_COMM_WORLD, 1);  
-	}
+        }
     }
 
   if(ThisTask==0)
@@ -86,6 +100,15 @@ int main(int argc, char *argv[])
   MPI_Bcast(&ifirst, 1, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&ilast,  1, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(command, COMMAND_LENGTH, MPI_CHAR, 0, MPI_COMM_WORLD);
+  if(command_line)
+    {
+      if(ThisTask!=0)command_line = malloc(sizeof(char)*(ilast-ifirst+1));
+      for(int i=ifirst; i<=ilast; i+=1)
+        {
+          if(ThisTask!=0)command_line[i] = malloc(sizeof(char)*COMMAND_LENGTH);
+          MPI_Bcast(command_line[i], COMMAND_LENGTH, MPI_CHAR, 0, MPI_COMM_WORLD);      
+        }
+    }
 
   /* Initial number of jobs to assign */
   njobs_tot      = ilast-ifirst+1;
