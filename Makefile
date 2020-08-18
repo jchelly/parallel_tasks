@@ -7,8 +7,8 @@ CFLAGS  = -g -O0 -Wall -pthread
 .c.o:
 	$(CC)  $(CFLAGS)   -c $< -o $*.o
 
-parallel_tasks:	parallel_tasks.o
-	$(CC) $(CFLAGS) parallel_tasks.o -o parallel_tasks $(LDFLAGS)
+parallel_tasks:	main.o
+	$(CC) $(CFLAGS) main.o -o parallel_tasks $(LDFLAGS)
 
 clean:
 	\rm -f *.o parallel_tasks
