@@ -31,5 +31,5 @@ module load intel_comp/2018 intel_mpi
 #
 # Any instances of %d in the command get replaced with the job index.
 #
-mpirun ./parallel_tasks 1 20 "python ./hello.py %d"
+mpirun ./build/parallel_tasks 1 20 "python ./hello.py %d"
 
