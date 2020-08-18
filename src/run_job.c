@@ -49,7 +49,7 @@ void *run_job(void *ptr)
 	    case 'i':
 	      {
                 /* This is an integer format specifier */
-                if(command_line)
+                if(have_command_file)
                   {
                     printf("Found integer specifier when expecting a string\n");
                     MPI_Abort(MPI_COMM_WORLD, 1);
@@ -69,7 +69,7 @@ void *run_job(void *ptr)
 	    case 'G':
 	      {
                 /* This is a float format specifier */
-                if(command_line)
+                if(have_command_file)
                   {
                     printf("Found float specifier when expecting a string\n");
                     MPI_Abort(MPI_COMM_WORLD, 1);
@@ -85,7 +85,7 @@ void *run_job(void *ptr)
             case 's':
               {
                 /* This is a string format specifier */
-                if(!command_line)
+                if(!have_command_file)
                   {
                     printf("Found string specifier when expecting int/float\n");
                     MPI_Abort(MPI_COMM_WORLD, 1);

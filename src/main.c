@@ -72,6 +72,7 @@ int main(int argc, char *argv[])
             MPI_Abort(MPI_COMM_WORLD, 1);  
           }
           strncpy(command, argv[2], COMMAND_LENGTH);
+          have_command_file = 1;
           break;
         case 4:
           /* We have ifirst, ilast, command_template */
@@ -84,7 +85,7 @@ int main(int argc, char *argv[])
               printf("Job index must be non-negative!\n");
               MPI_Abort(MPI_COMM_WORLD, 1);  
             }
-          command_line = NULL;
+          have_command_file = 0;          
           break;
         default:
           /* Invalid number of arguments */
@@ -100,9 +101,10 @@ int main(int argc, char *argv[])
   MPI_Bcast(&ifirst, 1, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(&ilast,  1, MPI_INT, 0, MPI_COMM_WORLD);
   MPI_Bcast(command, COMMAND_LENGTH, MPI_CHAR, 0, MPI_COMM_WORLD);
-  if(command_line)
+  MPI_Bcast(&have_command_file, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  if(have_command_file)
     {
-      if(ThisTask!=0)command_line = malloc(sizeof(char)*(ilast-ifirst+1));
+      if(ThisTask!=0)command_line = malloc(sizeof(char *)*(ilast-ifirst+1));
       for(int i=ifirst; i<=ilast; i+=1)
         {
           if(ThisTask!=0)command_line[i] = malloc(sizeof(char)*COMMAND_LENGTH);
@@ -111,7 +113,7 @@ int main(int argc, char *argv[])
     }
 
   /* Initial number of jobs to assign */
-  njobs_tot      = ilast-ifirst+1;
+  njobs_tot = ilast-ifirst+1;
 
   /* Initialize results table */
   job_result = malloc(sizeof(int)*njobs_tot);

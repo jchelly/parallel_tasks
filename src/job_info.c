@@ -24,3 +24,6 @@ double *job_time;
 
 /* Lines read from command file */
 char **command_line;
+
+/* Whether we have the command file */
+int have_command_file;
