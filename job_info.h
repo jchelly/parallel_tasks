@@ -29,4 +29,9 @@ extern int *job_result;
 /* Job elapsed times */
 extern double *job_time;
 
+#define TERMINATE_SIGNAL
+
+/* Maximum time to wait when polling for incoming messages (nanosecs) */
+#define MAX_SLEEP_NS 1000000000
+
 #endif
