@@ -50,8 +50,11 @@ int read_command_file(char *fname) {
       return -2;
     }
     
-    /* Store the line */
-    strncpy(command_line[num_lines], line, COMMAND_LENGTH);
+    /* Store the line, omitting any trailing newline */
+    int ncopy = strnlen(line, COMMAND_LENGTH-1);
+    if(line[ncopy-1]=='\n')ncopy -= 1;
+    strncpy(command_line[num_lines], line, ncopy);
+    command_line[num_lines][ncopy] = (char) 0;
     num_lines += 1;
   }
 

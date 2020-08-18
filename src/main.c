@@ -72,6 +72,7 @@ int main(int argc, char *argv[])
             MPI_Abort(MPI_COMM_WORLD, 1);  
           }
           strncpy(command, argv[2], COMMAND_LENGTH);
+          command[COMMAND_LENGTH-1] = (char) 0;
           have_command_file = 1;
           break;
         case 4:
