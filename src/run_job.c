@@ -12,7 +12,7 @@
 
 void *run_job(void *ptr)
 {
-  char cmd_exec[10*COMMAND_LENGTH];
+  char cmd_exec[COMMAND_LENGTH];
   char tmp[COMMAND_LENGTH];
   int ijob = *((int *) ptr);
   size_t exec_offset = 0;
@@ -35,6 +35,7 @@ void *run_job(void *ptr)
 	  /* No format strings left, so just copy */
 	  strncpy(cmd_exec+exec_offset, command+offset, 
 		 COMMAND_LENGTH-exec_offset);
+          cmd_exec[COMMAND_LENGTH-1] = (char) 0;
 	  offset = len;
 	}
       else
@@ -56,7 +57,8 @@ void *run_job(void *ptr)
                   } 
                 else 
                   {
-                    sprintf(cmd_exec+exec_offset, tmp, ijob);
+                    snprintf(cmd_exec+exec_offset, COMMAND_LENGTH-exec_offset,
+                             tmp, ijob);
                     exec_offset = strlen(cmd_exec);
                     offset += fpos + 1;
                   }
@@ -76,7 +78,8 @@ void *run_job(void *ptr)
                   } 
                 else 
                   {
-                    sprintf(cmd_exec+exec_offset, tmp, (double) ijob);
+                    snprintf(cmd_exec+exec_offset, COMMAND_LENGTH-exec_offset,
+                             tmp, (double) ijob);
                     exec_offset = strlen(cmd_exec);
                     offset += fpos + 1;
                   }
@@ -92,7 +95,8 @@ void *run_job(void *ptr)
                   } 
                 else
                   {
-                    sprintf(cmd_exec+exec_offset, tmp, command_line[ijob]);
+                    snprintf(cmd_exec+exec_offset, COMMAND_LENGTH-exec_offset,
+                             tmp, command_line[ijob]);
                     exec_offset = strlen(cmd_exec);
                     offset += fpos + 1;
                   }
@@ -103,6 +107,7 @@ void *run_job(void *ptr)
                 /* Can't handle this format, so just copy */
                 strncpy(cmd_exec+exec_offset, command+offset, 
                         COMMAND_LENGTH-exec_offset);
+                cmd_exec[COMMAND_LENGTH-1] = (char) 0;
                 offset = len;
               }
             }
