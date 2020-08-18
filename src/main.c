@@ -15,6 +15,32 @@
 #include "worker_task.h"
 
 
+void usage(void) {
+  printf("\n");
+  printf("  parallel_tasks usage:\n");
+  printf("\n");
+  printf("    mpirun -np N parallel_tasks ifirst ilast command\n");
+  printf("\n");
+  printf("    This runs the supplied command once for each index in the range ifirst\n");
+  printf("    to ilast, substituting the index in place of any C integer format\n");
+  printf("    specifiers.\n");
+  printf("\n");
+  /*
+  printf("  OR\n");
+  printf("\n");
+  printf("    mpirun -np N parallel_tasks command_file command_template\n");
+  printf("\n");
+  printf("    For each line in the file command_file, this substitutes the line\n");
+  printf("    into command_template in place of any string format specifiers and\n");
+  printf("    runs the command.\n");
+  printf("\n");
+  printf("  In both cases the command should be quoted to prevent the shell splitting\n");
+  printf("  it into multiple arguments and up to N commands are run simultaneously\n");
+  printf("\n");
+  */
+}
+
+
 int main(int argc, char *argv[])
 {
   int njobs_tot;
@@ -38,7 +64,7 @@ int main(int argc, char *argv[])
     {
       if(argc != 4)
 	{
-	  printf("Usage: parallel_tasks ifirst ilast command\n");
+	  usage();
 	  MPI_Abort(MPI_COMM_WORLD, 1);
 	}
       sscanf(argv[1], "%d", &ifirst);
