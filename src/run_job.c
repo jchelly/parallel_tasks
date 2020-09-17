@@ -8,6 +8,7 @@
 #include "job_info.h"
 #include "identify_format.h"
 #include "get_time.h"
+#include "runner.h"
 
 
 void *run_job(void *ptr)
@@ -116,7 +117,7 @@ void *run_job(void *ptr)
   
   /* Run the command */
   double start_time = get_time();
-  return_code = system(cmd_exec);
+  return_code = runner_execute(cmd_exec);
   double finish_time = get_time();
 
   /* On certain return codes, we should abort all jobs */

@@ -14,6 +14,8 @@
 #include "master_task.h"
 #include "worker_task.h"
 #include "command_file.h"
+#include "runner.h"
+#include "terminate.h"
 
 
 void usage(void) {
@@ -48,12 +50,16 @@ int main(int argc, char *argv[])
   double *job_time_all;
   int nfailed;
 
+  /* Fork job runner process (it's not safe to use system() after MPI_Init) */
+  runner_init();
+
+  /* Initialize MPI with the thread support we need */
   int provided;
   MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
   if(provided<MPI_THREAD_FUNNELED)
     {
       printf("This program needs MPI with at least MPI_THREAD_FUNNELED thread support\n");
-      MPI_Abort(MPI_COMM_WORLD, 1);
+      terminate(1);
     }
   MPI_Comm_rank(MPI_COMM_WORLD, &ThisTask);
   MPI_Comm_size(MPI_COMM_WORLD, &NTask);
@@ -69,7 +75,7 @@ int main(int argc, char *argv[])
           ilast = read_command_file(argv[1])-1;
           if(ilast < 0) {
             printf("Failed to read any lines from %s\n", argv[1]);
-            MPI_Abort(MPI_COMM_WORLD, 1);  
+            terminate(1);
           }
           strncpy(command, argv[2], COMMAND_LENGTH);
           command[COMMAND_LENGTH-1] = (char) 0;
@@ -84,14 +90,14 @@ int main(int argc, char *argv[])
           if((ifirst < 0) || (ilast < 0))
             {
               printf("Job index must be non-negative!\n");
-              MPI_Abort(MPI_COMM_WORLD, 1);  
+              terminate(1);
             }
           have_command_file = 0;          
           break;
         default:
           /* Invalid number of arguments */
 	  usage();
-	  MPI_Abort(MPI_COMM_WORLD, 1);
+          terminate(1);
         }
     }
 
@@ -202,6 +208,9 @@ int main(int argc, char *argv[])
     }
   
   MPI_Finalize();
+
+  /* Terminate job runner process */
+  runner_shutdown();
   
   /* All MPI tasks return non-zero exit code if any job failed */
   if(nfailed==0)
