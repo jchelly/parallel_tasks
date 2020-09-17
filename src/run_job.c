@@ -9,7 +9,7 @@
 #include "identify_format.h"
 #include "get_time.h"
 #include "runner.h"
-
+#include "terminate.h"
 
 void *run_job(void *ptr)
 {
@@ -54,7 +54,7 @@ void *run_job(void *ptr)
                 if(have_command_file)
                   {
                     printf("Found integer specifier when expecting a string\n");
-                    MPI_Abort(MPI_COMM_WORLD, 1);
+                    terminate(1);
                   } 
                 else 
                   {
@@ -75,7 +75,7 @@ void *run_job(void *ptr)
                 if(have_command_file)
                   {
                     printf("Found float specifier when expecting a string\n");
-                    MPI_Abort(MPI_COMM_WORLD, 1);
+                    terminate(1);
                   } 
                 else 
                   {
@@ -92,7 +92,7 @@ void *run_job(void *ptr)
                 if(!have_command_file)
                   {
                     printf("Found string specifier when expecting int/float\n");
-                    MPI_Abort(MPI_COMM_WORLD, 1);
+                    terminate(1);
                   } 
                 else
                   {
@@ -126,7 +126,7 @@ void *run_job(void *ptr)
     case 9:
     case 137:
       fprintf(stderr, "Job %d returned code %d (assumed to mean SIGKILL). Aborting all jobs.\n", ijob, return_code);
-      MPI_Abort(MPI_COMM_WORLD, 1);
+      terminate(1);
       break;
     }
 

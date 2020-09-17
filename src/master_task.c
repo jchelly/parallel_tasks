@@ -7,6 +7,7 @@
 #include "nanosec_sleep.h"
 #include "job_info.h"
 #include "run_job.h"
+#include "terminate.h"
 
 void master_task(void)
 {
@@ -144,7 +145,7 @@ void master_task(void)
       if(requests[src-1] != MPI_REQUEST_NULL)
         {
           printf("Something wrong here: all requests should be null at this point");
-          MPI_Abort(MPI_COMM_WORLD, 1);
+          terminate(1);
         }
     }
   free(requests);
