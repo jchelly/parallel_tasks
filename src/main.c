@@ -26,15 +26,15 @@ void usage(void) {
   printf("\n");
   printf("    This runs the supplied command once for each index in the range ifirst\n");
   printf("    to ilast, substituting the index in place of any C integer format\n");
-  printf("    specifiers.\n");
+  printf("    specifiers (e.g. %%d).\n");
   printf("\n");
   printf("  OR\n");
   printf("\n");
   printf("    mpirun -np N parallel_tasks command_file command_template\n");
   printf("\n");
   printf("    For each line in the file command_file, this substitutes the line\n");
-  printf("    into command_template in place of any string format specifiers and\n");
-  printf("    runs the command.\n");
+  printf("    into command_template in place of any string format specifiers (e.g. %%s)\n");
+  printf("    and runs the command.\n");
   printf("\n");
   printf("  In both cases the command should be quoted to prevent the shell splitting\n");
   printf("  it into multiple arguments and up to N commands are run simultaneously\n");
@@ -65,6 +65,7 @@ int main(int argc, char *argv[])
   MPI_Comm_size(MPI_COMM_WORLD, &NTask);
 
   /* Read command line args */
+  int ok = 1;
   if(ThisTask==0)
     {
       switch(argc)
@@ -97,9 +98,14 @@ int main(int argc, char *argv[])
         default:
           /* Invalid number of arguments */
 	  usage();
-          terminate(1);
+          ok = 0;
         }
     }
+  MPI_Bcast(&ok, 1, MPI_INT, 0, MPI_COMM_WORLD);
+  if(!ok) {
+    MPI_Finalize();
+    exit(0);
+  }
 
   if(ThisTask==0)
     printf("Parallel tasks - command is: %s\n", command);
