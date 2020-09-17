@@ -7,8 +7,9 @@ more jobs than cores any core which finishes its current job can
 immediately start another one.
 
 To compile it you need to make a copy of this directory, make sure you
-have an MPI module loaded (any version of MPI should be ok), and then
-run the following commands in the build directory:
+have an MPI module loaded (any version of MPI should be ok) and cmake
+version 3.9 or higher, and then run the following commands in the build
+directory:
 
   mkdir build
   cd build
